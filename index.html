@@ -53,7 +53,9 @@ select{padding:10px;background:#1a2e2a;border:2px solid #173832;border-radius:8p
   <div style="margin-bottom:8px">
     <input type="text" id="nameInput" placeholder="あなたの名前" maxlength="8" style="padding:10px;background:#1a2e2a;border:2px solid #173832;border-radius:8px;color:#e6fffa;font-size:1rem;text-align:center;width:180px;">
   </div>
-  <button class="btn" id="createBtn">部屋を作る</button>
+  <button class="btn" id="freePlayBtn" style="border-color:#fbbf24;color:#fbbf24">🖌️ フリーお絵描き</button>
+  <button class="btn" id="freePlayOnlineBtn" style="border-color:#fbbf24;color:#fbbf24">🖌️ フリーお絵描き（通信）</button>
+  <button class="btn" id="createBtn">部屋を作る（クイズ）</button>
   <button class="btn" id="joinBtn">部屋に入る</button>
 </div>
 
@@ -144,6 +146,7 @@ const WORDS = [
 let myName='', myId='', roomCode='', roomRef=null, isHost=false;
 let playersList=[], currentDrawer=0, currentWord='', roundNum=0, totalRounds=0;
 let scores={}, guessedPlayers=new Set(), timerInterval=null, timeLeft=60;
+let freePlayMode=false;
 
 // Canvas
 const canvas=document.getElementById('drawCanvas');
@@ -242,12 +245,18 @@ document.getElementById('joinConfirmBtn').addEventListener('click',()=>{
   ref.once('value',s=>{
     const d=s.val();
     if(!d){document.getElementById('joinError').textContent='部屋が見つかりません';return;}
-    if(d.status!=='waiting'){document.getElementById('joinError').textContent='ゲーム中です';return;}
+    if(d.status!=='waiting'&&d.status!=='freeplay'&&d.status!=='freeplay_started'){document.getElementById('joinError').textContent='ゲーム中です';return;}
     myName=document.getElementById('nameInput').value.trim()||'Player';
     myId=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
     roomCode=code; roomRef=ref; isHost=false;
     ref.child('players/'+myId).set({name:myName,score:0});
     ref.child('players/'+myId).onDisconnect().remove();
+    if(d.status==='freeplay_started'){
+      freePlayMode=true; startFreePlayOnline(); return;
+    }
+    if(d.status==='freeplay'){
+      freePlayMode=true;
+    }
     showScreen('waitScreen');
     document.getElementById('roomCodeShow').textContent=roomCode;
     document.getElementById('startGameBtn').style.display='none';
@@ -427,8 +436,110 @@ function showResults(){
 }
 
 document.getElementById('backMenuBtn').addEventListener('click',()=>{
-  if(roomRef){roomRef.remove();roomRef=null;}showScreen('menuScreen');
+  if(roomRef){roomRef.remove();roomRef=null;}freePlayMode=false;showScreen('menuScreen');
 });
+
+// Free play (solo)
+document.getElementById('freePlayBtn').addEventListener('click',()=>{
+  freePlayMode=true; roomRef=null;
+  hideAll(); document.getElementById('gameArea').classList.add('active');
+  resizeCanvas();
+  document.getElementById('topBar').style.display='none';
+  document.getElementById('scoreboard').style.display='none';
+  document.getElementById('guessArea').style.display='none';
+  document.getElementById('chatLog').style.display='none';
+  document.getElementById('tools').style.display='flex';
+  canvas.style.pointerEvents='auto';
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width/2,canvas.height/2);
+});
+
+// Free play (online)
+document.getElementById('freePlayOnlineBtn').addEventListener('click',()=>{
+  myName=document.getElementById('nameInput').value.trim()||'Player';
+  myId=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  freePlayMode=true; isHost=true;
+  roomCode=genCode();
+  roomRef=db.ref('draw_rooms/'+roomCode);
+  roomRef.set({host:myId,status:'freeplay',players:{[myId]:{name:myName,score:0}},strokes:null,chat:null});
+  roomRef.onDisconnect().remove();
+  document.getElementById('roomCodeShow').textContent=roomCode;
+  showScreen('waitScreen');
+  document.getElementById('startGameBtn').style.display='none';
+  document.getElementById('waitMsg').textContent='参加者を待っています...（1人でも開始可）';
+
+  // Show start button immediately for freeplay
+  setTimeout(()=>{document.getElementById('startGameBtn').style.display='block';document.getElementById('startGameBtn').textContent='お絵描き開始';},500);
+
+  roomRef.child('players').on('value',s=>{
+    const p=s.val()||{};
+    playersList=Object.entries(p).map(([id,d])=>({id,name:d.name,score:d.score||0}));
+    document.getElementById('playerList').innerHTML=playersList.map(x=>`<span style="color:#2dd4bf;margin:0 6px">${x.name}</span>`).join('');
+    document.getElementById('waitMsg').textContent=`${playersList.length}人 参加中`;
+  });
+  roomRef.child('status').on('value',s=>{
+    if(s.val()==='freeplay_started') startFreePlayOnline();
+  });
+});
+
+// Override start button for freeplay online
+const origStartClick = document.getElementById('startGameBtn').onclick;
+document.getElementById('startGameBtn').addEventListener('click',()=>{
+  if(freePlayMode&&isHost){
+    roomRef.update({status:'freeplay_started'});
+    startFreePlayOnline();
+    return;
+  }
+});
+
+function startFreePlayOnline(){
+  hideAll(); document.getElementById('gameArea').classList.add('active');
+  freePlayMode=true;
+  resizeCanvas();
+  document.getElementById('topBar').style.display='flex';
+  document.getElementById('roundInfo').textContent='Free';
+  document.getElementById('wordDisplay').textContent='フリーお絵描き';
+  document.getElementById('timerDisplay').textContent='∞';
+  document.getElementById('timerDisplay').style.color='#2dd4bf';
+  document.getElementById('scoreboard').style.display='none';
+  document.getElementById('guessArea').style.display='block';
+  document.getElementById('guessInput').placeholder='チャット...';
+  document.getElementById('guessInput').disabled=false;
+  document.getElementById('chatLog').style.display='block';
+  document.getElementById('chatLog').innerHTML='';
+  document.getElementById('tools').style.display='flex';
+  canvas.style.pointerEvents='auto';
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width/2,canvas.height/2);
+  addChat('フリーお絵描き開始！全員描けます','chat-system');
+
+  // Listen strokes
+  roomRef.child('strokes').on('child_added',s=>{
+    const strokes=s.val();if(!strokes)return;
+    strokes.forEach(st=>{
+      ctx.strokeStyle=st.c;ctx.lineWidth=st.s;ctx.lineCap='round';ctx.lineJoin='round';
+      ctx.beginPath();ctx.moveTo(st.x1,st.y1);ctx.lineTo(st.x2,st.y2);ctx.stroke();
+    });
+  });
+  roomRef.child('strokes').on('value',s=>{
+    if(s.val()===null){ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width/2,canvas.height/2);}
+  });
+  // Chat
+  roomRef.child('chat').on('child_added',s=>{
+    const m=s.val();if(!m)return;
+    if(m.system) addChat(m.msg,'chat-system');
+    else addChat(`${m.name}: ${m.msg}`);
+  });
+}
+
+// Freeplay online chat (reuse guess input)
+const origGuessHandler = document.getElementById('guessInput').onkeydown;
+document.getElementById('guessInput').addEventListener('keydown',e=>{
+  if(freePlayMode&&roomRef&&e.key==='Enter'){
+    const input=document.getElementById('guessInput');
+    const msg=input.value.trim();input.value='';
+    if(msg) roomRef.child('chat').push({name:myName,msg,correct:false});
+    e.stopImmediatePropagation();
+  }
+},true);
 
 window.addEventListener('resize',()=>{if(document.getElementById('gameArea').classList.contains('active'))resizeCanvas();});
 </script>
