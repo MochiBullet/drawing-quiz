@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Drawing Quiz</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0a0a0a;color:#e6fffa;font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100dvh;overflow:hidden;}
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.9);z-index:30;}
+.overlay.hidden{display:none;}
+h1{font-size:2rem;color:#2dd4bf;margin-bottom:0.5rem;}
+.subtitle{font-size:0.9rem;color:#8ba8a3;margin-bottom:1.5rem;}
+.btn{display:block;width:220px;padding:14px;margin:6px auto;border:2px solid #2dd4bf;background:transparent;color:#2dd4bf;font-size:1rem;font-weight:bold;border-radius:12px;cursor:pointer;transition:all 0.2s;}
+.btn:active,.btn:hover{background:#2dd4bf;color:#0a0a0a;}
+.room-code{font-size:2.5rem;font-weight:bold;color:#ffd700;letter-spacing:8px;background:#1a2e2a;padding:12px 28px;border-radius:12px;margin:1rem 0;}
+.room-input{font-size:1.5rem;text-align:center;letter-spacing:6px;width:200px;padding:12px;background:#1a2e2a;border:2px solid #173832;border-radius:12px;color:#e6fffa;margin:1rem 0;text-transform:uppercase;}
+.room-input:focus{border-color:#2dd4bf;outline:none;}
+.wait-text{color:#8ba8a3;font-size:0.9rem;animation:pulse 1.5s infinite;}
+select{padding:10px;background:#1a2e2a;border:2px solid #173832;border-radius:8px;color:#e6fffa;font-size:1rem;margin:4px;}
+#gameArea{display:none;width:100%;max-width:600px;flex-direction:column;align-items:center;}
+#gameArea.active{display:flex;}
+#topBar{width:100%;display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#111;border-bottom:1px solid #173832;}
+#topBar .timer{font-size:1.2rem;font-weight:bold;color:#ffd700;}
+#topBar .round{font-size:0.85rem;color:#8ba8a3;}
+#topBar .word{font-size:1.1rem;font-weight:bold;color:#2dd4bf;letter-spacing:2px;}
+#canvasWrap{width:100%;aspect-ratio:4/3;background:#fff;position:relative;touch-action:none;}
+#drawCanvas{width:100%;height:100%;display:block;cursor:crosshair;}
+#tools{width:100%;display:flex;gap:4px;padding:8px;background:#111;border-top:1px solid #173832;flex-wrap:wrap;justify-content:center;}
+.color-btn{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;}
+.color-btn.active{border-color:#ffd700;box-shadow:0 0 6px rgba(255,215,0,0.4);}
+.size-btn{padding:4px 10px;background:#1a2e2a;border:1px solid #173832;border-radius:6px;color:#e6fffa;font-size:0.8rem;cursor:pointer;}
+.size-btn.active{border-color:#2dd4bf;background:#0d3330;}
+.tool-btn{padding:6px 14px;background:#1a2e2a;border:1px solid #173832;border-radius:6px;color:#e6fffa;font-size:0.85rem;cursor:pointer;}
+.tool-btn:active{background:#2dd4bf;color:#0a0a0a;}
+#guessArea{width:100%;padding:8px;background:#111;border-top:1px solid #173832;}
+#guessInput{width:100%;padding:10px;background:#1a2e2a;border:2px solid #173832;border-radius:10px;color:#e6fffa;font-size:1rem;}
+#guessInput:focus{border-color:#2dd4bf;outline:none;}
+#guessInput:disabled{opacity:0.4;}
+#chatLog{width:100%;max-height:120px;overflow-y:auto;padding:6px 12px;font-size:0.85rem;}
+.chat-msg{padding:2px 0;}.chat-correct{color:#4ade80;font-weight:bold;}.chat-system{color:#ffd700;font-style:italic;}
+#scoreboard{width:100%;padding:8px 12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;font-size:0.8rem;}
+.score-item{background:#1a2e2a;padding:4px 10px;border-radius:8px;}.score-name{color:#2dd4bf;}.score-pts{color:#ffd700;margin-left:4px;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+</style>
+</head>
+<body>
+
+<!-- Menu -->
+<div id="menuScreen" class="overlay">
+  <h1>🎨 Drawing Quiz</h1>
+  <p class="subtitle">お絵描きクイズ</p>
+  <div style="margin-bottom:8px">
+    <input type="text" id="nameInput" placeholder="あなたの名前" maxlength="8" style="padding:10px;background:#1a2e2a;border:2px solid #173832;border-radius:8px;color:#e6fffa;font-size:1rem;text-align:center;width:180px;">
+  </div>
+  <button class="btn" id="createBtn">部屋を作る</button>
+  <button class="btn" id="joinBtn">部屋に入る</button>
+</div>
+
+<!-- Wait room -->
+<div id="waitScreen" class="overlay hidden">
+  <h1>🎨 部屋を作成</h1>
+  <div class="room-code" id="roomCodeShow">----</div>
+  <div id="playerList" style="margin:1rem 0;text-align:center;"></div>
+  <p class="wait-text" id="waitMsg">参加者を待っています...</p>
+  <button class="btn" id="startGameBtn" style="display:none">ゲーム開始</button>
+  <button class="btn" id="cancelBtn" style="margin-top:0.5rem;border-color:#f472b6;color:#f472b6;">キャンセル</button>
+</div>
+
+<!-- Join room -->
+<div id="joinScreen" class="overlay hidden">
+  <h1>🎨 部屋に入る</h1>
+  <input type="text" class="room-input" id="joinCodeInput" maxlength="4" placeholder="ABCD">
+  <button class="btn" id="joinConfirmBtn">参加する</button>
+  <p id="joinError" style="color:#f44;font-size:0.85rem;margin-top:0.5rem"></p>
+  <button class="btn" id="joinBackBtn" style="margin-top:0.5rem">戻る</button>
+</div>
+
+<!-- Game -->
+<div id="gameArea">
+  <div id="topBar">
+    <span class="round" id="roundInfo">1/4</span>
+    <span class="word" id="wordDisplay">---</span>
+    <span class="timer" id="timerDisplay">60</span>
+  </div>
+  <div id="scoreboard"></div>
+  <div id="canvasWrap">
+    <canvas id="drawCanvas"></canvas>
+  </div>
+  <div id="tools" style="display:none">
+    <button class="color-btn active" data-color="#000000" style="background:#000"></button>
+    <button class="color-btn" data-color="#f44336" style="background:#f44336"></button>
+    <button class="color-btn" data-color="#2196f3" style="background:#2196f3"></button>
+    <button class="color-btn" data-color="#4caf50" style="background:#4caf50"></button>
+    <button class="color-btn" data-color="#ffd700" style="background:#ffd700"></button>
+    <button class="color-btn" data-color="#ff9800" style="background:#ff9800"></button>
+    <button class="color-btn" data-color="#9c27b0" style="background:#9c27b0"></button>
+    <button class="color-btn" data-color="#ffffff" style="background:#fff"></button>
+    <span style="width:8px"></span>
+    <button class="size-btn active" data-size="3">細</button>
+    <button class="size-btn" data-size="8">中</button>
+    <button class="size-btn" data-size="16">太</button>
+    <span style="width:8px"></span>
+    <button class="tool-btn" id="eraserBtn">消しゴム</button>
+    <button class="tool-btn" id="clearBtn">全消し</button>
+  </div>
+  <div id="chatLog"></div>
+  <div id="guessArea">
+    <input type="text" id="guessInput" placeholder="答えを入力..." autocomplete="off">
+  </div>
+</div>
+
+<!-- Result -->
+<div id="resultScreen" class="overlay hidden">
+  <h1>🏆 結果発表</h1>
+  <div id="finalScores" style="margin:1rem 0;font-size:1.1rem;"></div>
+  <button class="btn" id="backMenuBtn">メニューに戻る</button>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey:"AIzaSyA8l-oe2BqZihiVVtizEl1fMGqhy8W-JzA",authDomain:"spear-battle.firebaseapp.com",
+  databaseURL:"https://spear-battle-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"spear-battle",storageBucket:"spear-battle.firebasestorage.app",
+  messagingSenderId:"696563248470",appId:"1:696563248470:web:158790c082a6cf408dbaf7"
+});
+const db = firebase.database();
+
+// Word list
+const WORDS = [
+  '犬','猫','りんご','バナナ','車','飛行機','太陽','月','星','雨',
+  '傘','魚','鳥','花','木','山','海','家','電車','自転車',
+  'ラーメン','寿司','ピザ','ハンバーガー','ケーキ','アイス',
+  'サッカー','野球','テニス','バスケ',
+  'ギター','ピアノ','カメラ','テレビ','スマホ',
+  'ロケット','恐竜','ペンギン','パンダ','ライオン',
+  'おばけ','忍者','王冠','剣','盾',
+  '虹','雪だるま','クリスマスツリー','風船','花火',
+];
+
+// State
+let myName='', myId='', roomCode='', roomRef=null, isHost=false;
+let playersList=[], currentDrawer=0, currentWord='', roundNum=0, totalRounds=0;
+let scores={}, guessedPlayers=new Set(), timerInterval=null, timeLeft=60;
+
+// Canvas
+const canvas=document.getElementById('drawCanvas');
+const ctx=canvas.getContext('2d');
+let drawing=false, lastX=0, lastY=0, penColor='#000000', penSize=3, isEraser=false;
+let strokeBuffer=[];
+
+function resizeCanvas(){
+  const wrap=document.getElementById('canvasWrap');
+  canvas.width=wrap.clientWidth*2; canvas.height=wrap.clientHeight*2;
+  ctx.scale(2,2); ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+}
+
+function getPos(e){
+  const r=canvas.getBoundingClientRect();
+  const t=e.touches?e.touches[0]:e;
+  return {x:(t.clientX-r.left)/(r.width)*canvas.width/2, y:(t.clientY-r.top)/(r.height)*canvas.height/2};
+}
+
+function startDraw(e){e.preventDefault();drawing=true;const p=getPos(e);lastX=p.x;lastY=p.y;}
+function moveDraw(e){
+  e.preventDefault();if(!drawing)return;
+  const p=getPos(e);
+  ctx.strokeStyle=isEraser?'#ffffff':penColor;ctx.lineWidth=isEraser?20:penSize;
+  ctx.beginPath();ctx.moveTo(lastX,lastY);ctx.lineTo(p.x,p.y);ctx.stroke();
+  const stroke={x1:lastX,y1:lastY,x2:p.x,y2:p.y,c:isEraser?'#ffffff':penColor,s:isEraser?20:penSize};
+  strokeBuffer.push(stroke);
+  lastX=p.x;lastY=p.y;
+}
+function endDraw(){
+  if(!drawing)return; drawing=false;
+  if(strokeBuffer.length>0&&roomRef){
+    roomRef.child('strokes').push(strokeBuffer);
+    strokeBuffer=[];
+  }
+}
+
+canvas.addEventListener('mousedown',startDraw);canvas.addEventListener('mousemove',moveDraw);
+canvas.addEventListener('mouseup',endDraw);canvas.addEventListener('mouseleave',endDraw);
+canvas.addEventListener('touchstart',startDraw,{passive:false});canvas.addEventListener('touchmove',moveDraw,{passive:false});
+canvas.addEventListener('touchend',endDraw);
+
+// Tools
+document.querySelectorAll('.color-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.color-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); penColor=b.dataset.color; isEraser=false;
+    document.getElementById('eraserBtn').style.background='';
+  });
+});
+document.querySelectorAll('.size-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.size-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); penSize=parseInt(b.dataset.size);
+  });
+});
+document.getElementById('eraserBtn').addEventListener('click',()=>{
+  isEraser=!isEraser;
+  document.getElementById('eraserBtn').style.background=isEraser?'#2dd4bf':'';
+});
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width/2,canvas.height/2);
+  if(roomRef) roomRef.child('strokes').remove();
+});
+
+// Generate room code
+function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<4;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
+
+// UI helpers
+function hideAll(){['menuScreen','waitScreen','joinScreen','resultScreen'].forEach(id=>document.getElementById(id).classList.add('hidden'));document.getElementById('gameArea').classList.remove('active');}
+function showScreen(id){hideAll();document.getElementById(id).classList.remove('hidden');}
+function addChat(msg,cls){const d=document.getElementById('chatLog');d.innerHTML+=`<div class="chat-msg ${cls||''}">${msg}</div>`;d.scrollTop=d.scrollHeight;}
+
+// Create room
+document.getElementById('createBtn').addEventListener('click',()=>{
+  myName=document.getElementById('nameInput').value.trim()||'Player';
+  myId=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  roomCode=genCode(); isHost=true;
+  roomRef=db.ref('draw_rooms/'+roomCode);
+  roomRef.set({host:myId,status:'waiting',players:{[myId]:{name:myName,score:0}},round:0,drawer:0,word:'',strokes:null,guessed:{},chat:null});
+  roomRef.onDisconnect().remove();
+  document.getElementById('roomCodeShow').textContent=roomCode;
+  showScreen('waitScreen');
+  document.getElementById('startGameBtn').style.display='none';
+  listenWaitRoom();
+});
+
+// Join room
+document.getElementById('joinBtn').addEventListener('click',()=>{showScreen('joinScreen');document.getElementById('joinCodeInput').value='';document.getElementById('joinError').textContent='';});
+document.getElementById('joinBackBtn').addEventListener('click',()=>showScreen('menuScreen'));
+document.getElementById('joinConfirmBtn').addEventListener('click',()=>{
+  const code=document.getElementById('joinCodeInput').value.toUpperCase().trim();
+  if(code.length!==4){document.getElementById('joinError').textContent='4文字の合言葉を入力';return;}
+  const ref=db.ref('draw_rooms/'+code);
+  ref.once('value',s=>{
+    const d=s.val();
+    if(!d){document.getElementById('joinError').textContent='部屋が見つかりません';return;}
+    if(d.status!=='waiting'){document.getElementById('joinError').textContent='ゲーム中です';return;}
+    myName=document.getElementById('nameInput').value.trim()||'Player';
+    myId=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+    roomCode=code; roomRef=ref; isHost=false;
+    ref.child('players/'+myId).set({name:myName,score:0});
+    ref.child('players/'+myId).onDisconnect().remove();
+    showScreen('waitScreen');
+    document.getElementById('roomCodeShow').textContent=roomCode;
+    document.getElementById('startGameBtn').style.display='none';
+    listenWaitRoom();
+  });
+});
+document.getElementById('joinCodeInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('joinConfirmBtn').click();});
+
+// Wait room
+function listenWaitRoom(){
+  roomRef.child('players').on('value',s=>{
+    const p=s.val()||{};
+    playersList=Object.entries(p).map(([id,d])=>({id,name:d.name,score:d.score||0}));
+    document.getElementById('playerList').innerHTML=playersList.map(x=>`<span style="color:#2dd4bf;margin:0 6px">${x.name}</span>`).join('');
+    document.getElementById('waitMsg').textContent=`${playersList.length}人 参加中`;
+    if(isHost&&playersList.length>=2) document.getElementById('startGameBtn').style.display='block';
+  });
+  roomRef.child('status').on('value',s=>{
+    if(s.val()==='playing') startPlaying();
+  });
+}
+
+document.getElementById('startGameBtn').addEventListener('click',()=>{
+  totalRounds=playersList.length;
+  roomRef.update({status:'playing',round:0,totalRounds});
+  startNewRound(0);
+});
+document.getElementById('cancelBtn').addEventListener('click',()=>{if(roomRef){roomRef.remove();roomRef=null;}showScreen('menuScreen');});
+
+// Game
+function startPlaying(){
+  hideAll();document.getElementById('gameArea').classList.add('active');
+  resizeCanvas();scores={};playersList.forEach(p=>scores[p.id]=0);
+  roomRef.child('round').on('value',s=>{
+    const r=s.val(); if(r===null)return;
+    roomRef.once('value',snap=>{
+      const d=snap.val();if(!d)return;
+      playersList=Object.entries(d.players||{}).map(([id,v])=>({id,name:v.name,score:v.score||0}));
+      totalRounds=d.totalRounds||playersList.length;
+      roundNum=d.round;
+      currentDrawer=roundNum%playersList.length;
+      currentWord=d.word||'';
+      guessedPlayers=new Set(Object.keys(d.guessed||{}));
+      startRoundUI();
+    });
+  });
+  listenGame();
+}
+
+function startNewRound(round){
+  const word=WORDS[Math.floor(Math.random()*WORDS.length)];
+  roomRef.update({round,word,strokes:null,guessed:{},chat:null});
+}
+
+function startRoundUI(){
+  const amDrawer=playersList[currentDrawer]&&playersList[currentDrawer].id===myId;
+  document.getElementById('roundInfo').textContent=`${roundNum+1}/${totalRounds}`;
+  if(amDrawer){
+    document.getElementById('wordDisplay').textContent=`お題: ${currentWord}`;
+    document.getElementById('tools').style.display='flex';
+    document.getElementById('guessInput').disabled=true;
+    document.getElementById('guessInput').placeholder='あなたが出題者です';
+    canvas.style.pointerEvents='auto';
+  }else{
+    document.getElementById('wordDisplay').textContent='_ '.repeat(currentWord.length);
+    document.getElementById('tools').style.display='none';
+    document.getElementById('guessInput').disabled=guessedPlayers.has(myId);
+    document.getElementById('guessInput').placeholder=guessedPlayers.has(myId)?'正解済み!':'答えを入力...';
+    canvas.style.pointerEvents='none';
+  }
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width/2,canvas.height/2);
+  document.getElementById('chatLog').innerHTML='';
+  addChat(`${playersList[currentDrawer]?.name||'?'} が描きます!`,'chat-system');
+  updateScoreboard();
+  startTimer();
+}
+
+function startTimer(){
+  clearInterval(timerInterval);timeLeft=60;
+  document.getElementById('timerDisplay').textContent=timeLeft;
+  timerInterval=setInterval(()=>{
+    timeLeft--;document.getElementById('timerDisplay').textContent=timeLeft;
+    document.getElementById('timerDisplay').style.color=timeLeft<=10?'#f44':'#ffd700';
+    if(timeLeft<=0){clearInterval(timerInterval);if(isHost)endRound();}
+  },1000);
+}
+
+function endRound(){
+  clearInterval(timerInterval);
+  roomRef.child('chat').push({name:'システム',msg:`答え: ${currentWord}`,system:true});
+  setTimeout(()=>{
+    if(roundNum+1>=totalRounds){roomRef.update({status:'finished'});}
+    else startNewRound(roundNum+1);
+  },3000);
+}
+
+function listenGame(){
+  // Strokes
+  roomRef.child('strokes').on('child_added',s=>{
+    const strokes=s.val();if(!strokes)return;
+    strokes.forEach(st=>{
+      ctx.strokeStyle=st.c;ctx.lineWidth=st.s;ctx.lineCap='round';ctx.lineJoin='round';
+      ctx.beginPath();ctx.moveTo(st.x1,st.y1);ctx.lineTo(st.x2,st.y2);ctx.stroke();
+    });
+  });
+  roomRef.child('strokes').on('value',s=>{
+    if(s.val()===null){ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width/2,canvas.height/2);}
+  });
+
+  // Chat
+  roomRef.child('chat').on('child_added',s=>{
+    const m=s.val();if(!m)return;
+    if(m.system) addChat(m.msg,'chat-system');
+    else if(m.correct) addChat(`🎉 ${m.name} が正解!`,'chat-correct');
+    else addChat(`${m.name}: ${m.msg}`);
+  });
+
+  // Guessed
+  roomRef.child('guessed').on('child_added',s=>{
+    if(s.key===myId){
+      document.getElementById('guessInput').disabled=true;
+      document.getElementById('guessInput').placeholder='正解済み!';
+    }
+    guessedPlayers.add(s.key);
+    // Check all guessed
+    if(isHost&&guessedPlayers.size>=playersList.length-1){
+      setTimeout(()=>endRound(),1500);
+    }
+  });
+
+  // Scores
+  roomRef.child('players').on('value',s=>{
+    const p=s.val()||{};
+    playersList=Object.entries(p).map(([id,v])=>({id,name:v.name,score:v.score||0}));
+    updateScoreboard();
+  });
+
+  // Status
+  roomRef.child('status').on('value',s=>{
+    if(s.val()==='finished') showResults();
+  });
+}
+
+// Guess
+document.getElementById('guessInput').addEventListener('keydown',e=>{
+  if(e.key!=='Enter')return;
+  const input=document.getElementById('guessInput');
+  const guess=input.value.trim();input.value='';
+  if(!guess)return;
+
+  if(guess===currentWord){
+    const pts=Math.max(10,Math.floor(timeLeft*1.5));
+    roomRef.child('guessed/'+myId).set(true);
+    roomRef.child('chat').push({name:myName,msg:guess,correct:true});
+    roomRef.child('players/'+myId+'/score').transaction(v=>(v||0)+pts);
+    // Bonus for drawer
+    roomRef.child('players/'+playersList[currentDrawer].id+'/score').transaction(v=>(v||0)+5);
+  }else{
+    roomRef.child('chat').push({name:myName,msg:guess,correct:false});
+  }
+});
+
+function updateScoreboard(){
+  const sb=document.getElementById('scoreboard');
+  sb.innerHTML=playersList.sort((a,b)=>b.score-a.score).map(p=>
+    `<span class="score-item"><span class="score-name">${p.name}</span><span class="score-pts">${p.score}pt</span></span>`
+  ).join('');
+}
+
+function showResults(){
+  clearInterval(timerInterval);hideAll();
+  document.getElementById('resultScreen').classList.remove('hidden');
+  const sorted=[...playersList].sort((a,b)=>b.score-a.score);
+  document.getElementById('finalScores').innerHTML=sorted.map((p,i)=>
+    `<div style="margin:8px 0;font-size:${i===0?'1.4rem':'1rem'};color:${i===0?'#ffd700':i===1?'#c0c0c0':'#cd7f32'}">${i===0?'🏆':i===1?'🥈':'🥉'} ${p.name} - ${p.score}pt</div>`
+  ).join('');
+}
+
+document.getElementById('backMenuBtn').addEventListener('click',()=>{
+  if(roomRef){roomRef.remove();roomRef=null;}showScreen('menuScreen');
+});
+
+window.addEventListener('resize',()=>{if(document.getElementById('gameArea').classList.contains('active'))resizeCanvas();});
+</script>
+</body>
+</html>
