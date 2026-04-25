@@ -130,7 +130,8 @@ select{padding:10px;background:#1a2e2a;border:2px solid #173832;border-radius:8p
 <div id="resultScreen" class="overlay hidden">
   <h1>🏆 結果発表</h1>
   <div id="finalScores" style="margin:1rem 0;font-size:1.1rem;"></div>
-  <button class="btn" id="backMenuBtn">メニューに戻る</button>
+  <button class="btn" id="continueBtn" style="display:none">🎨 もう5問やる</button>
+  <button class="btn" id="backMenuBtn" style="border-color:#f472b6;color:#f472b6">タイトルに戻る</button>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -306,8 +307,8 @@ function listenWaitRoom(){
 }
 
 document.getElementById('startGameBtn').addEventListener('click',()=>{
-  totalRounds=playersList.length;
-  roomRef.update({status:'playing',round:0,totalRounds});
+  totalRounds=5;
+  roomRef.update({status:'playing',round:0,totalRounds:5});
   startNewRound(0);
 });
 document.getElementById('cancelBtn').addEventListener('click',()=>{if(roomRef){roomRef.remove();roomRef=null;}showScreen('menuScreen');});
@@ -456,9 +457,41 @@ function showResults(){
   clearInterval(timerInterval);hideAll();
   document.getElementById('resultScreen').classList.remove('hidden');
   const sorted=[...playersList].sort((a,b)=>b.score-a.score);
-  document.getElementById('finalScores').innerHTML=sorted.map((p,i)=>
-    `<div style="margin:8px 0;font-size:${i===0?'1.4rem':'1rem'};color:${i===0?'#ffd700':i===1?'#c0c0c0':'#cd7f32'}">${i===0?'🏆':i===1?'🥈':'🥉'} ${p.name} - ${p.score}pt</div>`
-  ).join('');
+  const total=sorted.reduce((s,p)=>s+p.score,0);
+  document.getElementById('finalScores').innerHTML=
+    sorted.map((p,i)=>
+      `<div style="margin:8px 0;font-size:${i===0?'1.4rem':'1rem'};color:${i===0?'#ffd700':i===1?'#c0c0c0':'#cd7f32'}">${i===0?'🏆':i===1?'🥈':'🥉'} ${p.name} - ${p.score}pt</div>`
+    ).join('')+
+    `<div style="margin-top:16px;padding-top:12px;border-top:1px solid #173832;color:#8ba8a3;font-size:0.9rem">全員の合計: ${total}pt</div>`;
+
+  // Show continue button only if online (room still exists)
+  const contBtn=document.getElementById('continueBtn');
+  if(roomRef&&!freePlayMode){
+    contBtn.style.display='block';
+  }else{
+    contBtn.style.display='none';
+  }
+}
+
+// Continue (another 5 rounds in same room)
+document.getElementById('continueBtn').addEventListener('click',()=>{
+  if(!roomRef||!isHost) return;
+  // Reset scores for new set, keep cumulative
+  totalRounds=5;
+  roomRef.update({status:'playing',round:0,totalRounds:5,guessed:{},strokes:null,chat:null});
+  startNewRound(0);
+  hideAll();document.getElementById('gameArea').classList.add('active');
+  resizeCanvas();
+});
+
+// Listen for continue from host (non-host)
+if(!isHost&&roomRef){
+  roomRef.child('status').on('value',s=>{
+    if(s.val()==='playing'&&document.getElementById('resultScreen').classList.contains('hidden')===false){
+      hideAll();document.getElementById('gameArea').classList.add('active');
+      resizeCanvas();
+    }
+  });
 }
 
 document.getElementById('backMenuBtn').addEventListener('click',()=>{
