@@ -273,6 +273,8 @@ document.getElementById('joinConfirmBtn').addEventListener('click',()=>{
     const d=s.val();
     if(!d){document.getElementById('joinError').textContent='部屋が見つかりません';return;}
     if(d.status!=='waiting'&&d.status!=='freeplay'&&d.status!=='freeplay_started'){document.getElementById('joinError').textContent='ゲーム中です';return;}
+    const pCount=Object.keys(d.players||{}).length;
+    if(pCount>=6){document.getElementById('joinError').textContent='満員です（最大6人）';return;}
     myName=document.getElementById('nameInput').value.trim()||'Player';
     myId=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
     roomCode=code; roomRef=ref; isHost=false;
@@ -299,7 +301,8 @@ function listenWaitRoom(){
     playersList=Object.entries(p).map(([id,d])=>({id,name:d.name,score:d.score||0}));
     document.getElementById('playerList').innerHTML=playersList.map(x=>`<span style="color:#2dd4bf;margin:0 6px">${x.name}</span>`).join('');
     document.getElementById('waitMsg').textContent=`${playersList.length}人 参加中`;
-    if(isHost&&playersList.length>=2) document.getElementById('startGameBtn').style.display='block';
+    if(isHost&&playersList.length>=2&&playersList.length<=6) document.getElementById('startGameBtn').style.display='block';
+    if(playersList.length>=6) document.getElementById('waitMsg').textContent=`${playersList.length}人 参加中（満員）`;
   });
   roomRef.child('status').on('value',s=>{
     if(s.val()==='playing') startPlaying();
@@ -307,8 +310,8 @@ function listenWaitRoom(){
 }
 
 document.getElementById('startGameBtn').addEventListener('click',()=>{
-  totalRounds=5;
-  roomRef.update({status:'playing',round:0,totalRounds:5});
+  totalRounds=playersList.length*5;
+  roomRef.update({status:'playing',round:0,totalRounds:totalRounds});
   startNewRound(0);
 });
 document.getElementById('cancelBtn').addEventListener('click',()=>{if(roomRef){roomRef.remove();roomRef=null;}showScreen('menuScreen');});
@@ -477,8 +480,8 @@ function showResults(){
 document.getElementById('continueBtn').addEventListener('click',()=>{
   if(!roomRef||!isHost) return;
   // Reset scores for new set, keep cumulative
-  totalRounds=5;
-  roomRef.update({status:'playing',round:0,totalRounds:5,guessed:{},strokes:null,chat:null});
+  totalRounds=playersList.length*5;
+  roomRef.update({status:'playing',round:0,totalRounds:totalRounds,guessed:{},strokes:null,chat:null});
   startNewRound(0);
   hideAll();document.getElementById('gameArea').classList.add('active');
   resizeCanvas();
