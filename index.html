@@ -24,7 +24,7 @@ select{padding:10px;background:#1a2e2a;border:2px solid #173832;border-radius:8p
 #topBar .timer{font-size:1.2rem;font-weight:bold;color:#ffd700;}
 #topBar .round{font-size:0.85rem;color:#8ba8a3;}
 #topBar .word{font-size:1.1rem;font-weight:bold;color:#2dd4bf;letter-spacing:2px;}
-#canvasWrap{width:100%;aspect-ratio:4/3;background:#fff;position:relative;touch-action:none;}
+#canvasWrap{background:#fff;position:relative;touch-action:none;margin:0 auto;border:2px solid #173832;border-radius:4px;}
 #drawCanvas{width:100%;height:100%;display:block;cursor:crosshair;}
 #tools{width:100%;display:flex;gap:4px;padding:8px;background:#111;border-top:1px solid #173832;flex-wrap:wrap;justify-content:center;}
 .color-btn{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;}
@@ -90,21 +90,35 @@ select{padding:10px;background:#1a2e2a;border:2px solid #173832;border-radius:8p
     <canvas id="drawCanvas"></canvas>
   </div>
   <div id="tools" style="display:none">
-    <button class="color-btn active" data-color="#000000" style="background:#000"></button>
-    <button class="color-btn" data-color="#f44336" style="background:#f44336"></button>
-    <button class="color-btn" data-color="#2196f3" style="background:#2196f3"></button>
-    <button class="color-btn" data-color="#4caf50" style="background:#4caf50"></button>
-    <button class="color-btn" data-color="#ffd700" style="background:#ffd700"></button>
-    <button class="color-btn" data-color="#ff9800" style="background:#ff9800"></button>
-    <button class="color-btn" data-color="#9c27b0" style="background:#9c27b0"></button>
-    <button class="color-btn" data-color="#ffffff" style="background:#fff"></button>
-    <span style="width:8px"></span>
-    <button class="size-btn active" data-size="3">細</button>
-    <button class="size-btn" data-size="8">中</button>
-    <button class="size-btn" data-size="16">太</button>
-    <span style="width:8px"></span>
-    <button class="tool-btn" id="eraserBtn">消しゴム</button>
-    <button class="tool-btn" id="clearBtn">全消し</button>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;align-items:center">
+      <button class="color-btn active" data-color="#000000" style="background:#000"></button>
+      <button class="color-btn" data-color="#f44336" style="background:#f44336"></button>
+      <button class="color-btn" data-color="#2196f3" style="background:#2196f3"></button>
+      <button class="color-btn" data-color="#4caf50" style="background:#4caf50"></button>
+      <button class="color-btn" data-color="#ffd700" style="background:#ffd700"></button>
+      <button class="color-btn" data-color="#ff9800" style="background:#ff9800"></button>
+      <button class="color-btn" data-color="#9c27b0" style="background:#9c27b0"></button>
+      <button class="color-btn" data-color="#795548" style="background:#795548"></button>
+      <button class="color-btn" data-color="#ffffff" style="background:#fff;border:1px solid #ccc"></button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;justify-content:center">
+      <span style="font-size:0.75rem;color:#8ba8a3">太さ</span>
+      <input type="range" id="penSizeSlider" min="1" max="40" value="3" style="width:120px;accent-color:#2dd4bf">
+      <span id="penSizeVal" style="font-size:0.8rem;color:#2dd4bf;min-width:28px">3px</span>
+      <button class="tool-btn" id="eraserBtn">消しゴム</button>
+      <button class="tool-btn" id="clearBtn">全消し</button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:6px;justify-content:center">
+      <span style="font-size:0.75rem;color:#8ba8a3">キャンバス</span>
+      <select id="canvasSizeSelect">
+        <option value="4:3">4:3</option>
+        <option value="1:1">正方形</option>
+        <option value="16:9">16:9</option>
+        <option value="3:4">3:4 縦</option>
+      </select>
+      <button class="tool-btn" id="saveBtn">💾 保存</button>
+      <button class="tool-btn" id="shareImgBtn">📤 シェア</button>
+    </div>
   </div>
   <div id="chatLog"></div>
   <div id="guessArea">
@@ -154,12 +168,7 @@ const ctx=canvas.getContext('2d');
 let drawing=false, lastX=0, lastY=0, penColor='#000000', penSize=3, isEraser=false;
 let strokeBuffer=[];
 
-function resizeCanvas(){
-  const wrap=document.getElementById('canvasWrap');
-  canvas.width=wrap.clientWidth*2; canvas.height=wrap.clientHeight*2;
-  ctx.scale(2,2); ctx.lineCap='round'; ctx.lineJoin='round';
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-}
+// resizeCanvas defined below with canvasSizeSelect
 
 function getPos(e){
   const r=canvas.getBoundingClientRect();
@@ -198,11 +207,9 @@ document.querySelectorAll('.color-btn').forEach(b=>{
     document.getElementById('eraserBtn').style.background='';
   });
 });
-document.querySelectorAll('.size-btn').forEach(b=>{
-  b.addEventListener('click',()=>{
-    document.querySelectorAll('.size-btn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active'); penSize=parseInt(b.dataset.size);
-  });
+document.getElementById('penSizeSlider').addEventListener('input',e=>{
+  penSize=parseInt(e.target.value);
+  document.getElementById('penSizeVal').textContent=penSize+'px';
 });
 document.getElementById('eraserBtn').addEventListener('click',()=>{
   isEraser=!isEraser;
@@ -540,6 +547,73 @@ document.getElementById('guessInput').addEventListener('keydown',e=>{
     e.stopImmediatePropagation();
   }
 },true);
+
+// Canvas size change
+document.getElementById('canvasSizeSelect').addEventListener('change',e=>{
+  const [w,h] = e.target.value.split(':').map(Number);
+  canvasRatio = w/h;
+  resizeCanvas();
+});
+let canvasRatio = 4/3;
+function resizeCanvas(){
+  const wrap=document.getElementById('canvasWrap');
+  const maxW=Math.min(window.innerWidth-16, 600);
+  const maxH=window.innerHeight*0.5;
+  let cw=maxW, ch=maxW/canvasRatio;
+  if(ch>maxH){ch=maxH;cw=ch*canvasRatio;}
+  wrap.style.width=cw+'px'; wrap.style.height=ch+'px';
+  // Save current image
+  const imgData=canvas.width>0?ctx.getImageData(0,0,canvas.width,canvas.height):null;
+  canvas.width=cw*2; canvas.height=ch*2;
+  ctx.scale(2,2); ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,cw,ch);
+  if(imgData) ctx.putImageData(imgData,0,0);
+}
+
+// Save as JPG
+document.getElementById('saveBtn').addEventListener('click',()=>{
+  const link=document.createElement('a');
+  link.download='drawing-'+Date.now()+'.jpg';
+  const tmpCanvas=document.createElement('canvas');
+  tmpCanvas.width=canvas.width; tmpCanvas.height=canvas.height;
+  const tmpCtx=tmpCanvas.getContext('2d');
+  tmpCtx.fillStyle='#fff'; tmpCtx.fillRect(0,0,tmpCanvas.width,tmpCanvas.height);
+  tmpCtx.drawImage(canvas,0,0);
+  link.href=tmpCanvas.toDataURL('image/jpeg',0.9);
+  link.click();
+});
+
+// Share image
+document.getElementById('shareImgBtn').addEventListener('click',async()=>{
+  const tmpCanvas=document.createElement('canvas');
+  tmpCanvas.width=canvas.width; tmpCanvas.height=canvas.height;
+  const tmpCtx=tmpCanvas.getContext('2d');
+  tmpCtx.fillStyle='#fff'; tmpCtx.fillRect(0,0,tmpCanvas.width,tmpCanvas.height);
+  tmpCtx.drawImage(canvas,0,0);
+  tmpCanvas.toBlob(async blob=>{
+    if(navigator.share&&navigator.canShare){
+      const file=new File([blob],'drawing.jpg',{type:'image/jpeg'});
+      const data={title:'Drawing Quiz',text:'お絵描きクイズで描いたよ！',url:'https://mochibullet.github.io/drawing-quiz/',files:[file]};
+      if(navigator.canShare(data)){try{await navigator.share(data);}catch(e){}}
+      else{try{await navigator.share({title:'Drawing Quiz',text:'お絵描きクイズで描いたよ！',url:'https://mochibullet.github.io/drawing-quiz/'});}catch(e){}}
+    }else{
+      navigator.clipboard.writeText('お絵描きクイズで描いたよ！ https://mochibullet.github.io/drawing-quiz/').then(()=>alert('リンクをコピーしました！'));
+    }
+  },'image/jpeg',0.9);
+});
+
+// Keep alive in background (prevent Firebase disconnect)
+document.addEventListener('visibilitychange',()=>{
+  if(roomRef&&!document.hidden){
+    roomRef.child('players/'+myId+'/online').set(true);
+  }
+});
+// Prevent sleep disconnect with periodic ping
+setInterval(()=>{
+  if(roomRef&&myId){
+    roomRef.child('players/'+myId+'/lastSeen').set(Date.now());
+  }
+},30000);
 
 window.addEventListener('resize',()=>{if(document.getElementById('gameArea').classList.contains('active'))resizeCanvas();});
 </script>
