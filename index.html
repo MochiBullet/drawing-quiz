@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="pragma" content="no-cache">
 <title>Drawing Quiz</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -305,11 +307,14 @@ function listenWaitRoom(){
     if(playersList.length>=6) document.getElementById('waitMsg').textContent=`${playersList.length}人 参加中（満員）`;
   });
   roomRef.child('status').on('value',s=>{
-    if(s.val()==='playing') startPlaying();
+    const v=s.val();
+    if(v==='playing') startPlaying();
+    else if(v==='freeplay_started') { freePlayMode=true; startFreePlayOnline(); }
   });
 }
 
 document.getElementById('startGameBtn').addEventListener('click',()=>{
+  if(freePlayMode) return;
   totalRounds=playersList.length*5;
   roomRef.update({status:'playing',round:0,totalRounds:totalRounds});
   startNewRound(0);
@@ -365,7 +370,13 @@ function startRoundUI(){
 }
 
 function startTimer(){
-  clearInterval(timerInterval);timeLeft=60;
+  clearInterval(timerInterval);
+  if(freePlayMode){
+    document.getElementById('timerDisplay').textContent='∞';
+    document.getElementById('timerDisplay').style.color='#2dd4bf';
+    return;
+  }
+  timeLeft=60;
   document.getElementById('timerDisplay').textContent=timeLeft;
   timerInterval=setInterval(()=>{
     timeLeft--;document.getElementById('timerDisplay').textContent=timeLeft;
