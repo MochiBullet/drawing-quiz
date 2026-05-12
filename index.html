@@ -282,6 +282,9 @@ document.getElementById('joinConfirmBtn').addEventListener('click',()=>{
     roomCode=code; roomRef=ref; isHost=false;
     ref.child('players/'+myId).set({name:myName,score:0});
     ref.child('players/'+myId).onDisconnect().remove();
+    // ゲスト入室時、freePlayMode を明示リセットしてから status に応じて設定
+    // (古いセッション state を引きずってクイズと混線するのを防ぐ)
+    freePlayMode=false;
     if(d.status==='freeplay_started'){
       freePlayMode=true; startFreePlayOnline(); return;
     }
@@ -308,16 +311,23 @@ function listenWaitRoom(){
   });
   roomRef.child('status').on('value',s=>{
     const v=s.val();
-    if(v==='playing') startPlaying();
+    // freePlayMode=true なら 'playing' イベントを無視（クイズ誤起動防止）
+    if(v==='playing' && !freePlayMode) startPlaying();
     else if(v==='freeplay_started') { freePlayMode=true; startFreePlayOnline(); }
   });
 }
 
 document.getElementById('startGameBtn').addEventListener('click',()=>{
   if(freePlayMode) return;
-  totalRounds=playersList.length*5;
-  roomRef.update({status:'playing',round:0,totalRounds:totalRounds});
-  startNewRound(0);
+  if(!roomRef) return;
+  // 念のため Firebase の現在の status を再確認: フリーお絵描き部屋なら playing に上書きしない
+  roomRef.once('value',s=>{
+    const d=s.val();
+    if(d && (d.status==='freeplay' || d.status==='freeplay_started')) return;
+    totalRounds=playersList.length*5;
+    roomRef.update({status:'playing',round:0,totalRounds:totalRounds});
+    startNewRound(0);
+  });
 });
 document.getElementById('cancelBtn').addEventListener('click',()=>{if(roomRef){roomRef.remove();roomRef=null;}showScreen('menuScreen');});
 
